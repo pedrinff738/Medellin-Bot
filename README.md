@@ -358,3 +358,170 @@ Mensagem do painel inicial de escalação atualizada para:
 Clique no botão abaixo 🎯 Iniciar Escalação para iniciar a criação de uma nova escalação.
 
 🛡️ Disciplina • Foco • Lealdade • Respeito.
+
+
+## Atualização v5.2.0 - Participantes Reservas
+
+- Se houver vaga, o membro entra em **Participantes**.
+- Se a equipe principal estiver cheia, o membro entra em **Participantes Reservas**.
+- Se alguém sair da equipe principal, o primeiro reserva sobe automaticamente.
+- O painel mostra:
+  - 👥 Participantes
+  - 🔄 Participantes Reservas
+
+
+## Atualização v5.2.1 - Marcação @everyone
+
+- Ao iniciar uma nova escalação, o bot envia a mensagem marcando `@everyone`.
+- A escalação continua com participantes principais e reservas automáticos.
+
+
+## Atualização v5.3.0 - Logs de Escalação
+
+Novo canal de logs:
+
+```env
+LOGS_ESCALACAO_CHANNEL_ID=1510287440496037908
+```
+
+Funcionamento:
+
+- Ao clicar em 🏆 Win ou ❌ Red:
+  - O painel da escalação é enviado para o canal de logs de escalação.
+  - O bot reage na mensagem dos logs:
+    - 🏆 para Win
+    - ❌ para Red
+  - A mensagem original da escalação é apagada do canal de escalação.
+
+
+## Atualização v5.3.2 - Categoria de Logs
+
+Adicionado:
+
+```env
+LOGS_CATEGORY_ID=1510289025771245628
+```
+
+O bot agora verifica ao iniciar se os canais de logs estão dentro da categoria configurada:
+
+- Logs de envio de farmes
+- Logs de aprovados/reprovados
+- Logs de escalação
+
+Se algum canal estiver fora da categoria, o bot mostra um aviso no console, mas continua funcionando.
+
+
+## Correção v5.3.3 - @everyone na escalação
+
+- Corrigido envio da escalação para mencionar `@everyone`.
+- Adicionado `allowedMentions: { parse: ["everyone"] }` no envio inicial.
+- Atualizações de Entrar/Sair não marcam `@everyone` novamente.
+
+
+## Atualização v5.3.4 - Vagas Reservas na criação
+
+- Adicionado campo **🔄 Vagas Reservas** na Etapa 2 da criação da escalação.
+- O painel agora mostra `reservas/vagasReservas`.
+- Se a equipe principal estiver cheia, novos membros entram como reserva até o limite configurado.
+- Se as reservas estiverem cheias, o bot avisa que não há mais vagas.
+
+
+## Correção v5.3.5 - Permissão e Thumbnail
+
+- Corrigida permissão do cargo `perm puxar ação` para:
+  - iniciar escalação pelo botão
+  - usar `/painel_escalacao`
+  - usar `/escalacao`
+  - definir Win/Red
+- Restaurada imagem/banner Medellin no painel inicial de escalação.
+
+## Correção Final v5.4.0
+
+- Thumbnail/banner em todos os painéis principais.
+- Perm puxar ação para iniciar escalação e Win/Red.
+- @everyone ao abrir escalação.
+- Vagas Reservas na Etapa 2 e painel.
+- Logs de escalação finalizada com reação e exclusão da mensagem original.
+
+
+## Correção v5.4.1 - Estabilidade
+
+- Corrigido possível erro `Esta interação falhou`.
+- Corrigido possível erro `O aplicativo não respondeu`.
+- Comandos de painel agora usam resposta segura.
+- Botões de ranking e escalação respondem mais rápido.
+- Adicionado tratamento global de erros para evitar quedas.
+
+
+## Atualização v5.4.2 - Cancelar Escalação
+
+Adicionado botão:
+
+- 🗑️ Cancelar
+
+Funcionamento:
+
+- Apenas quem possui o cargo `perm puxar ação` pode cancelar.
+- Ao cancelar, a mensagem da escalação é apagada.
+- A escalação fica marcada como cancelada no banco de dados.
+- Depois disso é possível criar uma nova escalação normalmente.
+
+
+## Atualização v5.4.3 - Responsável Finaliza Ação
+
+- Apenas o usuário que puxou/criou a escalação consegue finalizar com:
+  - 🏆 Win
+  - ❌ Red
+- Mesmo que outro membro tenha cargo `Gerente Ação` ou `perm puxar ação`, ele não poderá finalizar a escalação de outro responsável.
+
+
+## Atualização v5.4.4 - Responsável Cancela Ação
+
+- Apenas o responsável que puxou/criou a escalação pode cancelar a ação.
+- Mesmo que outro membro tenha cargo `Gerente Ação` ou `perm puxar ação`, ele não poderá cancelar a escalação de outro responsável.
+- A regra agora fica igual ao Win/Red:
+  - quem puxou a ação finaliza;
+  - quem puxou a ação cancela.
+
+## Atualização v5.4.5 - Novo Servidor
+
+- Atualizado para GUILD_ID 1483604917980627079.
+- Corrigido cargo Gerência de Farme para GERENTE_FARME_ROLE_ID=1499119076352462859.
+- Atualizados canais de logs, escalação, cargos de ação e categoria de logs.
+
+
+## Correção v5.4.6 - /painel no canal correto
+
+- Adicionado `PAINEL_CHANNEL_ID=1510643915999678614`.
+- O comando `/painel` agora envia o painel no canal onde foi usado.
+- O comando `/painel` não envia mais painel para canais de logs ou canais de outro servidor.
+- O comando `/painel` só pode ser usado no canal configurado em `PAINEL_CHANNEL_ID`.
+
+## Correção v5.4.7
+
+- Corrigido erro `farmePainelEmbed is not defined` no comando `/painel`.
+
+
+## Atualização v5.4.8 - Uma Escalação Aberta por Vez
+
+- Agora só pode existir **uma escalação aberta** por vez.
+- Se uma escalação estiver aberta, o bot bloqueia a criação de outra.
+- Para criar uma nova escalação, a atual precisa ser finalizada com 🏆 Win, ❌ Red ou cancelada com 🗑️ Cancelar.
+
+
+## Atualização v5.4.9 - Menção de Cargo na Escalação
+
+- Substituído `@everyone` por `<@&1499119087643660411>`.
+- A marcação do cargo aparece no final da mensagem da escalação aberta.
+- Adicionada variável:
+
+```env
+ACAO_MENTION_ROLE_ID=1499119087643660411
+```
+
+
+## Correção v5.5.0 - Auto limpeza e menção de cargo
+
+- Se a mensagem da escalação for deletada manualmente, o bot cancela automaticamente o registro aberto no banco.
+- Corrigida a menção do cargo ao abrir escalação: <@&1499119087643660411>
+- Adicionada variável: `ACAO_MENTION_ROLE_ID=1499119087643660411`

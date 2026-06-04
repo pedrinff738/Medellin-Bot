@@ -1,0 +1,13 @@
+{
+  "name": "medellin-farmes-bot-autolimpeza-mencao-cargo",
+  "version": "5.5.0",
+  "description": "Bot Medellin com limpeza automática de escalação deletada e menção de cargo corrigida.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5"
+  }
+}
