@@ -541,48 +541,7 @@ function escalacaoButtons(escalacaoId, encerrada = false) {
 }
 
 
-async function limparEscalacaoAbertaSemMensagem() {
-  const db = loadDb();
-  if (!db.escalacoes) return null;
 
-  for (const [id, escalacao] of Object.entries(db.escalacoes)) {
-    if (escalacao.status !== "Aberta") continue;
-
-    if (!escalacao.messageId) {
-      escalacao.status = "Cancelada";
-      escalacao.resultado = "🗑️ Cancelada automaticamente: mensagem não encontrada.";
-      saveDb(db);
-      return id;
-    }
-
-    const canalEscalacao = await client.channels.fetch(CONFIG.escalacaoChannelId).catch(() => null);
-    if (!canalEscalacao) continue;
-
-    const mensagem = await canalEscalacao.messages.fetch(escalacao.messageId).catch(() => null);
-    if (!mensagem) {
-      escalacao.status = "Cancelada";
-      escalacao.resultado = "🗑️ Cancelada automaticamente: mensagem deletada manualmente.";
-      escalacao.canceladaAutomaticamenteEm = new Date().toISOString();
-      saveDb(db);
-      return id;
-    }
-  }
-
-  return null;
-}
-
-function getEscalacaoAberta() {
-  const db = loadDb();
-  if (!db.escalacoes) return null;
-
-  const aberta = Object.entries(db.escalacoes).find(([, escalacao]) => escalacao.status === "Aberta");
-  if (!aberta) return null;
-
-  return {
-    id: aberta[0],
-    escalacao: aberta[1]
-  };
-}
 
 function getEscalacao(escalacaoId) {
   const db = loadDb();
@@ -1144,7 +1103,8 @@ client.on("interactionCreate", async (interaction) => {
         const data = interaction.options.getString("data");
         const horario = interaction.options.getString("horario");
         const vagas = interaction.options.getInteger("vagas");
-        const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado") || "Não informado";
+const escalaAberta = getEscalacaoAberta();
+const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado") || "Não informado";
         const descricao = interaction.options.getString("descricao") || "Não informado";
 
         if (!vagas || vagas <= 0) {
@@ -1245,6 +1205,7 @@ client.on("interactionCreate", async (interaction) => {
 
         return interaction.editReply({ content: "✅ Painel de ranking enviado neste canal." });
       }
+
       if (interaction.commandName === "reset_semanal") {
         if (!(await isGerente(interaction.user.id))) {
           return interaction.reply({ content: "❌ Apenas a Gerência de Farme pode usar isso.", ephemeral: true });
@@ -1679,7 +1640,7 @@ client.on("interactionCreate", async (interaction) => {
       const vagasReservas = Number(vagasReservasRaw.replace(/\D/g, "")) || 0;
       const valorArrecadadoInicial = interaction.fields.getTextInputValue("valor_arrecadado") || "Não informado";
       const descricao = interaction.fields.getTextInputValue("descricao") || "Não informado";
-        const escalacaoId = `${Date.now()}_${interaction.user.id}`;
+const escalacaoId = `${Date.now()}_${interaction.user.id}`;
       const db = loadDb();
 
       if (!db.escalacoes) db.escalacoes = {};
