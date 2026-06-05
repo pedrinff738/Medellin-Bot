@@ -244,35 +244,14 @@ function painelButton() {
 
 
 
-function escalationPayload(embed, components = []) {
-  return buildPayload(embed, components, true);
-}
-
-async function enviarEscalacaoComMarcacao(canalEscalacao, escalacao, escalacaoId) {
-  const msgEscalacao = await canalEscalacao.send(
-    escalationPayload(escalacaoEmbed(escalacao), [escalacaoButtons(escalacaoId)])
-  ).catch(error => {
-    console.error("Erro ao enviar painel da escalação:", error);
-    return null;
-  });
-
-  if (!msgEscalacao) return null;
-
-  escalacao.messageId = msgEscalacao.id;
-
-  const msgMarcacao = await canalEscalacao.send({
-    content: `<@&${CONFIG.acaoMentionRoleId}> 🚨 Nova escalação aberta! Verifique o painel acima.`,
+function escalationMentionPayload(embed, components = []) {
+  return {
+    ...buildPayload(embed, components, true),
+    content: `📢 **Escalação de ação aberta!**\n\n<@&${CONFIG.acaoMentionRoleId}>`,
     allowedMentions: {
       roles: [CONFIG.acaoMentionRoleId]
     }
-  }).catch(error => {
-    console.error("Erro ao enviar marcação da escalação:", error);
-    return null;
-  });
-
-  if (msgMarcacao) escalacao.mentionMessageId = msgMarcacao.id;
-
-  return msgEscalacao;
+  };
 }
 
 
@@ -596,32 +575,13 @@ function getEscalacaoAberta() {
   const db = loadDb();
   if (!db.escalacoes) return null;
 
-  let alterou = false;
+  const aberta = Object.entries(db.escalacoes).find(([, escalacao]) => escalacao.status === "Aberta");
+  if (!aberta) return null;
 
-  for (const [id, escalacao] of Object.entries(db.escalacoes)) {
-    if (!escalacao) {
-      delete db.escalacoes[id];
-      alterou = true;
-      continue;
-    }
-
-    const status = String(escalacao.status || "").toLowerCase();
-
-    // Qualquer escalação cancelada/finalizada não pode bloquear uma nova.
-    if (status === "cancelada" || status === "finalizada" || status === "encerrada") {
-      delete db.escalacoes[id];
-      alterou = true;
-      continue;
-    }
-
-    if (status === "aberta") {
-      if (alterou) saveDb(db);
-      return { id, escalacao };
-    }
-  }
-
-  if (alterou) saveDb(db);
-  return null;
+  return {
+    id: aberta[0],
+    escalacao: aberta[1]
+  };
 }
 
 function getEscalacao(escalacaoId) {
@@ -659,18 +619,15 @@ async function enviarLogEscalacaoFinalizada(escalacao, escalacaoId, isWin) {
 
 async function excluirMensagemEscalacao(escalacao) {
   try {
+    if (!escalacao.messageId) return;
+
     const canalEscalacao = await client.channels.fetch(CONFIG.escalacaoChannelId).catch(() => null);
     if (!canalEscalacao) return;
 
-    if (escalacao.messageId) {
-      const mensagem = await canalEscalacao.messages.fetch(escalacao.messageId).catch(() => null);
-      if (mensagem) await mensagem.delete().catch(console.error);
-    }
+    const mensagem = await canalEscalacao.messages.fetch(escalacao.messageId).catch(() => null);
+    if (!mensagem) return;
 
-    if (escalacao.mentionMessageId) {
-      const mensagemMarcacao = await canalEscalacao.messages.fetch(escalacao.mentionMessageId).catch(() => null);
-      if (mensagemMarcacao) await mensagemMarcacao.delete().catch(console.error);
-    }
+    await mensagem.delete().catch(console.error);
   } catch (error) {
     console.error("Erro ao excluir mensagem da escalação:", error);
   }
@@ -920,7 +877,7 @@ async function registerCommands() {
       ),
     new SlashCommandBuilder()
       .setName("limpar_escalacao")
-      .setDescription("Limpa todas as escalações abertas e temporárias"),
+      .setDescription("Limpa todas as escalações temporárias"),
 
     new SlashCommandBuilder().setName("reset_semanal").setDescription("Reseta o ranking semanal."),
     new SlashCommandBuilder().setName("reset_mensal").setDescription("Reseta o ranking mensal.")
@@ -1239,12 +1196,16 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           return interaction.editReply({ content: "❌ Canal de escalação não encontrado ou sem permissão." });
         }
 
-        const msgEscalacao = await enviarEscalacaoComMarcacao(canalEscalacao, escalacao, escalacaoId);
+        const msgEscalacao = await canalEscalacao.send(escalationMentionPayload(escalacaoEmbed(escalacao), [escalacaoButtons(escalacaoId)])).catch(error => {
+          console.error("Erro ao enviar escalação:", error);
+          return null;
+        });
 
         if (!msgEscalacao) {
           return interaction.editReply({ content: "❌ Não consegui enviar a escalação. Verifique as permissões do bot no canal de escalação." });
         }
 
+        escalacao.messageId = msgEscalacao.id;
         saveDb(db);
 
         return interaction.editReply({ content: "✅ Escalação aberta com sucesso neste canal." });
@@ -1299,53 +1260,28 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
       }
 
       if (interaction.commandName === "limpar_escalacao") {
-        await interaction.deferReply({ ephemeral: true }).catch(() => null);
-
         if (!membroTemPermPuxarAcao(interaction)) {
-          return interaction.editReply({
-            content: "❌ Você não possui permissão para utilizar este comando."
+          return interaction.reply({
+            content: "❌ Você não possui permissão para utilizar este comando.",
+            ephemeral: true
           });
         }
 
         const db = loadDb();
-        if (!db.escalacoes) db.escalacoes = {};
-
-        let mensagensApagadas = 0;
-        let escalacoesLimpas = 0;
-        const canalEscalacao = await client.channels.fetch(CONFIG.escalacaoChannelId).catch(() => null);
-
-        for (const escalacao of Object.values(db.escalacoes)) {
-          if (!escalacao) continue;
-          escalacoesLimpas++;
-
-          if (canalEscalacao && escalacao.messageId) {
-            const mensagemEscalacao = await canalEscalacao.messages.fetch(escalacao.messageId).catch(() => null);
-            if (mensagemEscalacao) {
-              await mensagemEscalacao.delete().catch(console.error);
-              mensagensApagadas++;
-            }
-          }
-
-          if (canalEscalacao && escalacao.mentionMessageId) {
-            const mensagemMarcacao = await canalEscalacao.messages.fetch(escalacao.mentionMessageId).catch(() => null);
-            if (mensagemMarcacao) {
-              await mensagemMarcacao.delete().catch(console.error);
-              mensagensApagadas++;
-            }
-          }
-        }
-
         db.escalacoes = {};
         saveDb(db);
 
         const temp = loadTemp();
         Object.keys(temp).forEach(key => {
-          if (key.startsWith("esc_")) delete temp[key];
+          if (key.startsWith("esc_")) {
+            delete temp[key];
+          }
         });
         saveTemp(temp);
 
-        return interaction.editReply({
-          content: `✅ Limpeza concluída. Mensagens apagadas: **${mensagensApagadas}**. Escalações limpas: **${escalacoesLimpas}**. Agora é possível criar uma nova escalação.`
+        return interaction.reply({
+          content: "✅ Escalações temporárias limpas com sucesso. Agora é possível criar uma nova escalação.",
+          ephemeral: true
         });
       }
 
@@ -1458,18 +1394,19 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           return interaction.reply({
             content: "❌ Apenas quem possui o cargo **perm puxar ação** pode iniciar uma escalação.",
             ephemeral: true
-          }).catch(() => null);
+          });
         }
 
-        // Limpa rascunho antigo caso o usuário tenha fechado/cancelado o formulário anterior.
-        const temp = loadTemp();
-        delete temp[`esc_${interaction.user.id}`];
-        saveTemp(temp);
+        
+        const escalaAberta = getEscalacaoAberta();
+        if (escalaAberta) {
+          return interaction.reply({
+            content: "⚠️ Já existe uma escalação aberta no momento, aguarde ela ser finalizada!",
+            ephemeral: true
+          });
+        }
 
-        // Remove do banco qualquer ação cancelada/finalizada que esteja travando uma nova escalação.
-        getEscalacaoAberta();
-
-        return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
+return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
           console.error("Erro ao abrir modal de escalação:", error);
         });
       }
@@ -1603,13 +1540,6 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
       if (interaction.customId.startsWith("cancelar_escalacao_")) {
         await interaction.deferUpdate().catch(() => null);
 
-        if (!membroTemPermPuxarAcao(interaction)) {
-          return interaction.followUp({
-            content: "❌ Apenas quem possui o cargo **perm puxar ação** pode cancelar uma escalação.",
-            ephemeral: true
-          }).catch(() => null);
-        }
-
         const escalacaoId = interaction.customId.replace("cancelar_escalacao_", "");
         const { db, escalacao } = getEscalacao(escalacaoId);
 
@@ -1622,33 +1552,22 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
 
         if (escalacao.criadaPor !== interaction.user.id) {
           return interaction.followUp({
-            content: "❌ Apenas o **responsável que puxou esta ação** pode cancelá-la.",
+            content: "❌ Apenas o responsável pela ação pode cancelar esta escalação.",
             ephemeral: true
           }).catch(() => null);
         }
 
-        if (escalacao.status !== "Aberta") {
-          return interaction.followUp({
-            content: "⚠️ Esta escalação já foi finalizada ou cancelada.",
-            ephemeral: true
-          }).catch(() => null);
-        }
+        escalacao.status = "Cancelada";
+        escalacao.resultado = `🗑️ Cancelada por <@${interaction.user.id}>`;
+        escalacao.canceladaPor = interaction.user.id;
+        escalacao.canceladaEm = new Date().toISOString();
 
-        // Primeiro apaga as mensagens do Discord.
-        await excluirMensagemEscalacao(escalacao);
-
-        // Depois remove a escalação do banco.
-        // Isso impede que getEscalacaoAberta() encontre essa ação como aberta depois do cancelamento.
-        delete db.escalacoes[escalacaoId];
         saveDb(db);
 
-        // Também limpa qualquer rascunho temporário de criação de escalação desse usuário.
-        const temp = loadTemp();
-        delete temp[`esc_${interaction.user.id}`];
-        saveTemp(temp);
+        await excluirMensagemEscalacao(escalacao);
 
         return interaction.followUp({
-          content: "🗑️ Escalação cancelada com sucesso. Agora você pode criar outra escalação novamente.",
+          content: "✅ Escalação cancelada com sucesso. Agora é possível criar uma nova escalação.",
           ephemeral: true
         }).catch(() => null);
       }
@@ -1754,16 +1673,6 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
     }
 
     if (interaction.type === InteractionType.ModalSubmit && interaction.customId === "modal_escalacao_etapa_1") {
-      await interaction.deferReply({ ephemeral: true }).catch(() => null);
-
-      await limparEscalacaoAbertaSemMensagem().catch(() => null);
-      const escalaAberta = getEscalacaoAberta();
-      if (escalaAberta) {
-        return interaction.editReply({
-          content: "⚠️ Já existe uma escalação aberta no momento. Use `/limpar_escalacao` para apagar a antiga, ou finalize/cancele ela."
-        });
-      }
-
       const acao = interaction.fields.getTextInputValue("acao");
       const armamento = interaction.fields.getTextInputValue("armamento");
       const data = interaction.fields.getTextInputValue("data");
@@ -1773,8 +1682,9 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
       const vagas = Number(vagasRaw.replace(/\D/g, ""));
 
       if (!vagas || vagas <= 0) {
-        return interaction.editReply({
-          content: "❌ A quantidade de vagas precisa ser um número válido. Exemplo: 15"
+        return interaction.reply({
+          content: "❌ A quantidade de vagas precisa ser um número válido. Exemplo: 15",
+          ephemeral: true
         });
       }
 
@@ -1789,9 +1699,10 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
       };
       saveTemp(temp);
 
-      return interaction.editReply({
+      return interaction.reply({
         content: "✅ Etapa 1 concluída. Clique em **➡️ Próximo** para preencher Valor Arrecadado e Descrição.",
-        components: [proximoEscalacaoButton()]
+        components: [proximoEscalacaoButton()],
+        ephemeral: true
       });
     }
 
@@ -1850,14 +1761,18 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
         });
       }
 
-      const msgEscalacao = await enviarEscalacaoComMarcacao(canalEscalacao, escalacao, escalacaoId);
+      const msgEscalacao = await canalEscalacao.send(escalationMentionPayload(escalacaoEmbed(escalacao), [escalacaoButtons(escalacaoId)])).catch(error => {
+        console.error("Erro ao enviar escalação:", error);
+        return null;
+      });
 
-        if (!msgEscalacao) {
+      if (!msgEscalacao) {
         return interaction.editReply({
           content: "❌ Não consegui enviar a escalação. Verifique as permissões do bot no canal de escalação."
         });
       }
 
+      escalacao.messageId = msgEscalacao.id;
       saveDb(db);
 
       return interaction.editReply({
