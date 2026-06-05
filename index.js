@@ -244,42 +244,38 @@ function painelButton() {
 
 
 
-function escalationPanelPayload(embed, components = []) {
-  return {
-    ...buildPayload(embed, components, true),
-    content: "📢 **Escalação de ação aberta!**"
-  };
-}
-
-function escalationMentionPayload() {
-  return {
-    content: `<@&${CONFIG.acaoMentionRoleId}> 🚨 Nova escalação aberta! Verifique o painel acima.`,
-    allowedMentions: {
-      roles: [CONFIG.acaoMentionRoleId]
-    }
-  };
+function escalationPayload(embed, components = []) {
+  return buildPayload(embed, components, true);
 }
 
 async function enviarEscalacaoComMarcacao(canalEscalacao, escalacao, escalacaoId) {
   const msgEscalacao = await canalEscalacao.send(
-    escalationPanelPayload(escalacaoEmbed(escalacao), [escalacaoButtons(escalacaoId)])
+    escalationPayload(escalacaoEmbed(escalacao), [escalacaoButtons(escalacaoId)])
   ).catch(error => {
-    console.error("Erro ao enviar escalação:", error);
+    console.error("Erro ao enviar painel da escalação:", error);
     return null;
   });
 
   if (!msgEscalacao) return null;
 
-  const msgMarcacao = await canalEscalacao.send(escalationMentionPayload()).catch(error => {
-    console.error("Erro ao enviar mensagem de marcação da escalação:", error);
+  escalacao.messageId = msgEscalacao.id;
+
+  const msgMarcacao = await canalEscalacao.send({
+    content: `<@&${CONFIG.acaoMentionRoleId}> 🚨 Nova escalação aberta! Verifique o painel acima.`,
+    allowedMentions: {
+      roles: [CONFIG.acaoMentionRoleId]
+    }
+  }).catch(error => {
+    console.error("Erro ao enviar marcação da escalação:", error);
     return null;
   });
 
-  escalacao.messageId = msgEscalacao.id;
   if (msgMarcacao) escalacao.mentionMessageId = msgMarcacao.id;
 
   return msgEscalacao;
 }
+
+
 
 
 function painelEscalacaoEmbed() {
@@ -657,7 +653,7 @@ async function excluirMensagemEscalacao(escalacao) {
       if (mensagemMarcacao) await mensagemMarcacao.delete().catch(console.error);
     }
   } catch (error) {
-    console.error("Erro ao excluir mensagens da escalação:", error);
+    console.error("Erro ao excluir mensagem da escalação:", error);
   }
 }
 
@@ -1284,21 +1280,19 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
       }
 
       if (interaction.commandName === "limpar_escalacao") {
+        await interaction.deferReply({ ephemeral: true }).catch(() => null);
+
         if (!membroTemPermPuxarAcao(interaction)) {
-          return interaction.reply({
-            content: "❌ Você não possui permissão para utilizar este comando.",
-            ephemeral: true
+          return interaction.editReply({
+            content: "❌ Você não possui permissão para utilizar este comando."
           });
         }
-
-        await interaction.deferReply({ ephemeral: true }).catch(() => null);
 
         const db = loadDb();
         if (!db.escalacoes) db.escalacoes = {};
 
         let mensagensApagadas = 0;
         let escalacoesLimpas = 0;
-
         const canalEscalacao = await client.channels.fetch(CONFIG.escalacaoChannelId).catch(() => null);
 
         for (const escalacao of Object.values(db.escalacoes)) {
@@ -1327,22 +1321,12 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
 
         const temp = loadTemp();
         Object.keys(temp).forEach(key => {
-          if (key.startsWith("esc_")) {
-            delete temp[key];
-          }
+          if (key.startsWith("esc_")) delete temp[key];
         });
         saveTemp(temp);
 
         return interaction.editReply({
-          content:
-            `✅ Limpeza concluída.
-` +
-            `🗑️ Mensagens apagadas: **${mensagensApagadas}**
-` +
-            `📋 Escalações limpas: **${escalacoesLimpas}**
-
-` +
-            `Agora é possível criar uma nova escalação.`
+          content: `✅ Limpeza concluída. Mensagens apagadas: **${mensagensApagadas}**. Escalações limpas: **${escalacoesLimpas}**. Agora é possível criar uma nova escalação.`
         });
       }
 
@@ -1455,19 +1439,10 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           return interaction.reply({
             content: "❌ Apenas quem possui o cargo **perm puxar ação** pode iniciar uma escalação.",
             ephemeral: true
-          });
+          }).catch(() => null);
         }
 
-        
-        const escalaAberta = getEscalacaoAberta();
-        if (escalaAberta) {
-          return interaction.reply({
-            content: "⚠️ Já existe uma escalação aberta no momento, aguarde ela ser finalizada!",
-            ephemeral: true
-          });
-        }
-
-return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
+        return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
           console.error("Erro ao abrir modal de escalação:", error);
         });
       }
@@ -1748,6 +1723,16 @@ return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
     }
 
     if (interaction.type === InteractionType.ModalSubmit && interaction.customId === "modal_escalacao_etapa_1") {
+      await interaction.deferReply({ ephemeral: true }).catch(() => null);
+
+      await limparEscalacaoAbertaSemMensagem().catch(() => null);
+      const escalaAberta = getEscalacaoAberta();
+      if (escalaAberta) {
+        return interaction.editReply({
+          content: "⚠️ Já existe uma escalação aberta no momento. Use `/limpar_escalacao` para apagar a antiga, ou finalize/cancele ela."
+        });
+      }
+
       const acao = interaction.fields.getTextInputValue("acao");
       const armamento = interaction.fields.getTextInputValue("armamento");
       const data = interaction.fields.getTextInputValue("data");
@@ -1757,9 +1742,8 @@ return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
       const vagas = Number(vagasRaw.replace(/\D/g, ""));
 
       if (!vagas || vagas <= 0) {
-        return interaction.reply({
-          content: "❌ A quantidade de vagas precisa ser um número válido. Exemplo: 15",
-          ephemeral: true
+        return interaction.editReply({
+          content: "❌ A quantidade de vagas precisa ser um número válido. Exemplo: 15"
         });
       }
 
@@ -1774,10 +1758,9 @@ return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
       };
       saveTemp(temp);
 
-      return interaction.reply({
+      return interaction.editReply({
         content: "✅ Etapa 1 concluída. Clique em **➡️ Próximo** para preencher Valor Arrecadado e Descrição.",
-        components: [proximoEscalacaoButton()],
-        ephemeral: true
+        components: [proximoEscalacaoButton()]
       });
     }
 
@@ -1838,7 +1821,7 @@ return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
 
       const msgEscalacao = await enviarEscalacaoComMarcacao(canalEscalacao, escalacao, escalacaoId);
 
-      if (!msgEscalacao) {
+        if (!msgEscalacao) {
         return interaction.editReply({
           content: "❌ Não consegui enviar a escalação. Verifique as permissões do bot no canal de escalação."
         });
