@@ -1720,7 +1720,20 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
       const valorArrecadadoInicial = interaction.fields.getTextInputValue("valor_arrecadado") || "Não informado";
       const descricao = interaction.fields.getTextInputValue("descricao") || "Não informado";
 
-      const escalacaoId = `${Date.now()}_${interaction.user.id}`;
+            await limparEscalacaoAbertaSemMensagem().catch(() => null);
+
+      const escalaAberta = getEscalacaoAberta();
+
+      if (escalaAberta) {
+        delete temp[`esc_${interaction.user.id}`];
+        saveTemp(temp);
+
+        return interaction.editReply({
+          content: "⚠️ Já existe uma escalação aberta no momento, aguarde ela ser finalizada!"
+        });
+      }
+
+const escalacaoId = `${Date.now()}_${interaction.user.id}`;
       const db = loadDb();
 
       if (!db.escalacoes) db.escalacoes = {};
