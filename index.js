@@ -1442,12 +1442,13 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           }).catch(() => null);
         }
 
-        // Limpa rascunho antigo do usuário caso ele tenha clicado em Cancelar no modal do Discord.
+        // Se o usuário fechou/cancelou algum modal antes, remove o rascunho antigo.
+        // O Discord não envia evento quando alguém aperta "Cancelar" no modal.
         const temp = loadTemp();
-        if (temp[`esc_${interaction.user.id}`]) {
-          delete temp[`esc_${interaction.user.id}`];
-          saveTemp(temp);
-        }
+        delete temp[`esc_${interaction.user.id}`];
+        saveTemp(temp);
+
+        await limparEscalacaoAbertaSemMensagem().catch(() => null);
 
         return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
           console.error("Erro ao abrir modal de escalação:", error);
@@ -1614,22 +1615,12 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           }).catch(() => null);
         }
 
-        escalacao.status = "Cancelada";
-        escalacao.resultado = `🗑️ Cancelada por <@${interaction.user.id}>`;
-        escalacao.canceladaPor = interaction.user.id;
-        escalacao.canceladaEm = new Date().toISOString();
-
+        // Apaga as mensagens do Discord primeiro.
         await excluirMensagemEscalacao(escalacao);
 
-        // Remove totalmente a escalação do banco para liberar uma nova imediatamente.
+        // Remove a escalação do banco em vez de apenas mudar o status.
+        // Assim o getEscalacaoAberta() não encontra mais essa escalação e libera uma nova.
         delete db.escalacoes[escalacaoId];
-
-        const temp = loadTemp();
-        if (temp[`esc_${interaction.user.id}`]) {
-          delete temp[`esc_${interaction.user.id}`];
-          saveTemp(temp);
-        }
-
         saveDb(db);
 
         return interaction.followUp({
@@ -1677,12 +1668,10 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
         escalacao.finalizadaPor = interaction.user.id;
         escalacao.finalizadaEm = new Date().toISOString();
 
+        saveDb(db);
+
         await enviarLogEscalacaoFinalizada(escalacao, escalacaoId, isWin);
         await excluirMensagemEscalacao(escalacao);
-
-        // Remove a escalação finalizada do banco para não travar novas escalações.
-        delete db.escalacoes[escalacaoId];
-        saveDb(db);
 
         return interaction.followUp({
           content: isWin
