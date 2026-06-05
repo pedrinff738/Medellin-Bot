@@ -1442,6 +1442,13 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           }).catch(() => null);
         }
 
+        // Limpa rascunho antigo do usuário caso ele tenha clicado em Cancelar no modal do Discord.
+        const temp = loadTemp();
+        if (temp[`esc_${interaction.user.id}`]) {
+          delete temp[`esc_${interaction.user.id}`];
+          saveTemp(temp);
+        }
+
         return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
           console.error("Erro ao abrir modal de escalação:", error);
         });
@@ -1612,9 +1619,18 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
         escalacao.canceladaPor = interaction.user.id;
         escalacao.canceladaEm = new Date().toISOString();
 
-        saveDb(db);
-
         await excluirMensagemEscalacao(escalacao);
+
+        // Remove totalmente a escalação do banco para liberar uma nova imediatamente.
+        delete db.escalacoes[escalacaoId];
+
+        const temp = loadTemp();
+        if (temp[`esc_${interaction.user.id}`]) {
+          delete temp[`esc_${interaction.user.id}`];
+          saveTemp(temp);
+        }
+
+        saveDb(db);
 
         return interaction.followUp({
           content: "🗑️ Escalação cancelada com sucesso. Agora você pode criar outra escalação novamente.",
@@ -1661,10 +1677,12 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
         escalacao.finalizadaPor = interaction.user.id;
         escalacao.finalizadaEm = new Date().toISOString();
 
-        saveDb(db);
-
         await enviarLogEscalacaoFinalizada(escalacao, escalacaoId, isWin);
         await excluirMensagemEscalacao(escalacao);
+
+        // Remove a escalação finalizada do banco para não travar novas escalações.
+        delete db.escalacoes[escalacaoId];
+        saveDb(db);
 
         return interaction.followUp({
           content: isWin
