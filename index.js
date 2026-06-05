@@ -875,10 +875,6 @@ async function registerCommands() {
           .setDescription("Descrição da ação")
           .setRequired(false)
       ),
-    new SlashCommandBuilder()
-      .setName("limpar_escalacao")
-      .setDescription("Limpa todas as escalações temporárias"),
-
     new SlashCommandBuilder().setName("reset_semanal").setDescription("Reseta o ranking semanal."),
     new SlashCommandBuilder().setName("reset_mensal").setDescription("Reseta o ranking mensal.")
   ].map(c => c.toJSON());
@@ -1148,16 +1144,7 @@ client.on("interactionCreate", async (interaction) => {
         const data = interaction.options.getString("data");
         const horario = interaction.options.getString("horario");
         const vagas = interaction.options.getInteger("vagas");
-        
-      await limparEscalacaoAbertaSemMensagem().catch(() => null);
-        const escalaAberta = getEscalacaoAberta();
-        if (escalaAberta) {
-          return interaction.editReply({
-            content: "⚠️ Já existe uma escalação aberta no momento, aguarde ela ser finalizada!"
-          });
-        }
-
-const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado") || "Não informado";
+        const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado") || "Não informado";
         const descricao = interaction.options.getString("descricao") || "Não informado";
 
         if (!vagas || vagas <= 0) {
@@ -1258,33 +1245,6 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
 
         return interaction.editReply({ content: "✅ Painel de ranking enviado neste canal." });
       }
-
-      if (interaction.commandName === "limpar_escalacao") {
-        if (!membroTemPermPuxarAcao(interaction)) {
-          return interaction.reply({
-            content: "❌ Você não possui permissão para utilizar este comando.",
-            ephemeral: true
-          });
-        }
-
-        const db = loadDb();
-        db.escalacoes = {};
-        saveDb(db);
-
-        const temp = loadTemp();
-        Object.keys(temp).forEach(key => {
-          if (key.startsWith("esc_")) {
-            delete temp[key];
-          }
-        });
-        saveTemp(temp);
-
-        return interaction.reply({
-          content: "✅ Escalações temporárias limpas com sucesso. Agora é possível criar uma nova escalação.",
-          ephemeral: true
-        });
-      }
-
       if (interaction.commandName === "reset_semanal") {
         if (!(await isGerente(interaction.user.id))) {
           return interaction.reply({ content: "❌ Apenas a Gerência de Farme pode usar isso.", ephemeral: true });
@@ -1719,21 +1679,7 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
       const vagasReservas = Number(vagasReservasRaw.replace(/\D/g, "")) || 0;
       const valorArrecadadoInicial = interaction.fields.getTextInputValue("valor_arrecadado") || "Não informado";
       const descricao = interaction.fields.getTextInputValue("descricao") || "Não informado";
-
-            await limparEscalacaoAbertaSemMensagem().catch(() => null);
-
-      const escalaAberta = getEscalacaoAberta();
-
-      if (escalaAberta) {
-        delete temp[`esc_${interaction.user.id}`];
-        saveTemp(temp);
-
-        return interaction.editReply({
-          content: "⚠️ Já existe uma escalação aberta no momento, aguarde ela ser finalizada!"
-        });
-      }
-
-const escalacaoId = `${Date.now()}_${interaction.user.id}`;
+        const escalacaoId = `${Date.now()}_${interaction.user.id}`;
       const db = loadDb();
 
       if (!db.escalacoes) db.escalacoes = {};
