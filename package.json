@@ -1,7 +1,7 @@
 {
-  "name": "medellin-bot-cancelar-limpar-fix",
-  "version": "5.5.2",
-  "description": "Bot Medellin com cancelar escalação e limpar escalações corrigidos.",
+  "name": "medellin-bot-resp-auto-escalado",
+  "version": "5.5.4",
+  "description": "Bot Medellin com responsável pela ação escalado automaticamente.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
