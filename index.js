@@ -596,13 +596,32 @@ function getEscalacaoAberta() {
   const db = loadDb();
   if (!db.escalacoes) return null;
 
-  const aberta = Object.entries(db.escalacoes).find(([, escalacao]) => escalacao.status === "Aberta");
-  if (!aberta) return null;
+  let alterou = false;
 
-  return {
-    id: aberta[0],
-    escalacao: aberta[1]
-  };
+  for (const [id, escalacao] of Object.entries(db.escalacoes)) {
+    if (!escalacao) {
+      delete db.escalacoes[id];
+      alterou = true;
+      continue;
+    }
+
+    const status = String(escalacao.status || "").toLowerCase();
+
+    // Qualquer escalação cancelada/finalizada não pode bloquear uma nova.
+    if (status === "cancelada" || status === "finalizada" || status === "encerrada") {
+      delete db.escalacoes[id];
+      alterou = true;
+      continue;
+    }
+
+    if (status === "aberta") {
+      if (alterou) saveDb(db);
+      return { id, escalacao };
+    }
+  }
+
+  if (alterou) saveDb(db);
+  return null;
 }
 
 function getEscalacao(escalacaoId) {
@@ -1442,13 +1461,13 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           }).catch(() => null);
         }
 
-        // Se o usuário fechou/cancelou algum modal antes, remove o rascunho antigo.
-        // O Discord não envia evento quando alguém aperta "Cancelar" no modal.
+        // Limpa rascunho antigo caso o usuário tenha fechado/cancelado o formulário anterior.
         const temp = loadTemp();
         delete temp[`esc_${interaction.user.id}`];
         saveTemp(temp);
 
-        await limparEscalacaoAbertaSemMensagem().catch(() => null);
+        // Remove do banco qualquer ação cancelada/finalizada que esteja travando uma nova escalação.
+        getEscalacaoAberta();
 
         return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
           console.error("Erro ao abrir modal de escalação:", error);
@@ -1615,13 +1634,18 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           }).catch(() => null);
         }
 
-        // Apaga as mensagens do Discord primeiro.
+        // Primeiro apaga as mensagens do Discord.
         await excluirMensagemEscalacao(escalacao);
 
-        // Remove a escalação do banco em vez de apenas mudar o status.
-        // Assim o getEscalacaoAberta() não encontra mais essa escalação e libera uma nova.
+        // Depois remove a escalação do banco.
+        // Isso impede que getEscalacaoAberta() encontre essa ação como aberta depois do cancelamento.
         delete db.escalacoes[escalacaoId];
         saveDb(db);
+
+        // Também limpa qualquer rascunho temporário de criação de escalação desse usuário.
+        const temp = loadTemp();
+        delete temp[`esc_${interaction.user.id}`];
+        saveTemp(temp);
 
         return interaction.followUp({
           content: "🗑️ Escalação cancelada com sucesso. Agora você pode criar outra escalação novamente.",
