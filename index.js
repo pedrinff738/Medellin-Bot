@@ -1182,7 +1182,7 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           valorArrecadado: valorArrecadadoInicial,
           status: "Aberta",
           criadaPor: interaction.user.id,
-          participantes: [],
+          participantes: [interaction.user.id],
           criadaEm: new Date().toISOString()
         };
 
@@ -1244,19 +1244,19 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
       if (interaction.commandName === "painel_ranking") {
         await interaction.deferReply({ ephemeral: true }).catch(() => null);
         if (!(await isGerente(interaction.user.id))) {
-          return interaction.reply({ content: "❌ Apenas a Gerência de Farme pode enviar o painel de ranking.", ephemeral: true });
+          return interaction.editReply({ content: "❌ Apenas a Gerência de Farme pode enviar o painel de ranking." });
         }
 
         // Envia o painel de ranking no mesmo canal onde o comando foi usado.
         const channel = interaction.channel;
 
         if (!channel) {
-          return interaction.reply({ content: "❌ Não foi possível identificar o canal atual.", ephemeral: true });
+          return interaction.editReply({ content: "❌ Não foi possível identificar o canal atual." });
         }
 
         await channel.send(buildPayload(rankingPainelEmbed(), [rankingPainelButtons()], true));
 
-        return interaction.reply({ content: "✅ Painel de ranking enviado neste canal.", ephemeral: true });
+        return interaction.editReply({ content: "✅ Painel de ranking enviado neste canal." });
       }
 
       if (interaction.commandName === "limpar_escalacao") {
@@ -1397,16 +1397,13 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           });
         }
 
-        
-        const escalaAberta = getEscalacaoAberta();
-        if (escalaAberta) {
-          return interaction.reply({
-            content: "⚠️ Já existe uma escalação aberta no momento, aguarde ela ser finalizada!",
-            ephemeral: true
-          });
+        const temp = loadTemp();
+        if (temp[`esc_${interaction.user.id}`]) {
+          delete temp[`esc_${interaction.user.id}`];
+          saveTemp(temp);
         }
 
-return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
+        return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
           console.error("Erro ao abrir modal de escalação:", error);
         });
       }
@@ -1741,7 +1738,7 @@ return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
         resultado: "Aguardando resultado",
         status: "Aberta",
         criadaPor: interaction.user.id,
-        participantes: [],
+        participantes: [interaction.user.id],
         reservas: [],
         criadaEm: new Date().toISOString()
       };
