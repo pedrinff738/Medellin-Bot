@@ -1291,7 +1291,37 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           });
         }
 
+        await interaction.deferReply({ ephemeral: true }).catch(() => null);
+
         const db = loadDb();
+        if (!db.escalacoes) db.escalacoes = {};
+
+        let mensagensApagadas = 0;
+        let escalacoesLimpas = 0;
+
+        const canalEscalacao = await client.channels.fetch(CONFIG.escalacaoChannelId).catch(() => null);
+
+        for (const escalacao of Object.values(db.escalacoes)) {
+          if (!escalacao) continue;
+          escalacoesLimpas++;
+
+          if (canalEscalacao && escalacao.messageId) {
+            const mensagemEscalacao = await canalEscalacao.messages.fetch(escalacao.messageId).catch(() => null);
+            if (mensagemEscalacao) {
+              await mensagemEscalacao.delete().catch(console.error);
+              mensagensApagadas++;
+            }
+          }
+
+          if (canalEscalacao && escalacao.mentionMessageId) {
+            const mensagemMarcacao = await canalEscalacao.messages.fetch(escalacao.mentionMessageId).catch(() => null);
+            if (mensagemMarcacao) {
+              await mensagemMarcacao.delete().catch(console.error);
+              mensagensApagadas++;
+            }
+          }
+        }
+
         db.escalacoes = {};
         saveDb(db);
 
@@ -1303,9 +1333,16 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
         });
         saveTemp(temp);
 
-        return interaction.reply({
-          content: "✅ Escalações e registros temporários limpos com sucesso. Agora é possível criar uma nova escalação.",
-          ephemeral: true
+        return interaction.editReply({
+          content:
+            `✅ Limpeza concluída.
+` +
+            `🗑️ Mensagens apagadas: **${mensagensApagadas}**
+` +
+            `📋 Escalações limpas: **${escalacoesLimpas}**
+
+` +
+            `Agora é possível criar uma nova escalação.`
         });
       }
 
