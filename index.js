@@ -1,4 +1,5 @@
 require("dotenv").config();
+console.log("✅ Versão carregada: sistema limite 2 escalações reconstruído + clientReady + thumbnail");
 
 process.on("unhandledRejection", (error) => {
   console.error("Unhandled Rejection:", error);
@@ -31,7 +32,6 @@ const {
 const fs = require("fs");
 const path = require("path");
 
-const VERSAO_BOT = "2026-06-06-final-painel-unico-limite-2-showmodal-imediato";
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
@@ -272,8 +272,6 @@ function painelEscalacaoEmbed() {
   if (fs.existsSync(CONFIG.imagemLocal)) {
     embed.setThumbnail("attachment://medellin-thumbnail.png");
     embed.setImage("attachment://medellin-thumbnail.png");
-  } else if (client?.user) {
-    embed.setThumbnail(client.user.displayAvatarURL({ extension: "png", size: 256 }));
   }
 
   return embed;
@@ -289,22 +287,17 @@ function painelEscalacaoButton() {
   );
 }
 
+
 async function apagarPaineisEscalacaoAntigos(channel) {
   try {
     if (!channel?.messages?.fetch) return;
-
     const mensagens = await channel.messages.fetch({ limit: 20 }).catch(() => null);
     if (!mensagens) return;
 
     const paineis = mensagens.filter(msg => {
       const ehDoBot = msg.author?.id === client.user?.id;
-      const temTitulo = msg.embeds?.some(embed =>
-        String(embed.title || "").toUpperCase().includes("ESCALAÇÃO DE AÇÃO")
-      );
-      const temBotao = msg.components?.some(row =>
-        row.components?.some(component => component.customId === "iniciar_escalacao")
-      );
-
+      const temTitulo = msg.embeds?.some(embed => String(embed.title || "").toUpperCase().includes("ESCALAÇÃO DE AÇÃO"));
+      const temBotao = msg.components?.some(row => row.components?.some(component => component.customId === "iniciar_escalacao"));
       return ehDoBot && temTitulo && temBotao;
     });
 
@@ -579,6 +572,7 @@ function getEscalacao(escalacaoId) {
   return { db, escalacao: db.escalacoes[escalacaoId] };
 }
 
+
 const LIMITE_ESCALACOES_ABERTAS = 2;
 
 function getEscalacoesAbertas(db = loadDb()) {
@@ -586,9 +580,6 @@ function getEscalacoesAbertas(db = loadDb()) {
 
   return Object.values(db.escalacoes).filter(escalacao => {
     if (!escalacao) return false;
-
-    // Sistema reconstruído: somente status exatamente "Aberta" conta como vaga ocupada.
-    // "Finalizada", "Cancelada", "Win", "Red" ou qualquer outro status libera vaga.
     return String(escalacao.status || "").toLowerCase() === "aberta";
   });
 }
@@ -603,11 +594,10 @@ function podeCriarNovaEscalacao(db = loadDb()) {
 
 function mensagemLimiteEscalacoes(db = loadDb()) {
   const abertas = quantidadeEscalacoesAbertas(db);
-  return `⚠️ Já existem **${abertas}/${LIMITE_ESCALACOES_ABERTAS}** escalações abertas no momento. Finalize ou cancele uma escalação para liberar vaga.`;
+  return `⚠️ Limite de escalações abertas atingido: **${abertas}/${LIMITE_ESCALACOES_ABERTAS}**. Finalize ou cancele uma escalação para liberar vaga.`;
 }
 
-// Compatibilidade: se algum trecho antigo chamar essa função, ela agora segue o sistema novo.
-// Ela só retorna algo quando o limite de 2 abertas for atingido.
+// Compatibilidade com qualquer trecho antigo: só bloqueia quando já tiver 2 abertas.
 function getEscalacaoAberta(db = loadDb()) {
   const abertas = getEscalacoesAbertas(db);
   return abertas.length >= LIMITE_ESCALACOES_ABERTAS ? abertas[0] : null;
@@ -1048,10 +1038,6 @@ const client = new Client({
 
 client.once("clientReady", async () => {
   console.log(`✅ Bot online como ${client.user.tag}`);
-  console.log(`✅ Versão carregada: ${VERSAO_BOT}`);
-  console.log("✅ Versão carregada: bloqueio reconstruído: máximo 2 escalações abertas - 2026-06-06");
-  console.log("✅ Sistema novo ativo: até 2 escalações abertas simultâneas.");
-  console.log("✅ Sistema de escalação ativo: limite novo de 2 escalações abertas simultâneas.");
   if (!CONFIG.logsAprovadosReprovadosChannelId) console.log("⚠️ LOGS_ANALISE_APROVADOS_REPROVADOS não configurado no .env.");
   await registerCommands().catch(console.error);
   await verificarCategoriaLogs().catch(console.error);
@@ -1102,9 +1088,7 @@ client.once("clientReady", async () => {
 });
 
 client.on("interactionCreate", async (interaction) => {
-  // PRIORIDADE MÁXIMA: botão Iniciar Escalação
-  // O showModal precisa ser a PRIMEIRA resposta da interação.
-  // Não coloque await, loadDb, saveDb, fetch, deferReply, deferUpdate, reply ou editReply antes disso.
+  // PRIORIDADE MÁXIMA: abrir modal sem await antes, evitando Unknown interaction (10062).
   if (interaction.isButton() && interaction.customId === "iniciar_escalacao") {
     return interaction.showModal(modalEscalacaoEtapa1());
   }
@@ -1178,7 +1162,7 @@ client.on("interactionCreate", async (interaction) => {
         const data = interaction.options.getString("data");
         const horario = interaction.options.getString("horario");
         const vagas = interaction.options.getInteger("vagas");
-        const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado") || "Não informado";
+const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado") || "Não informado";
         const descricao = interaction.options.getString("descricao") || "Não informado";
 
         if (!vagas || vagas <= 0) {
@@ -1191,9 +1175,7 @@ client.on("interactionCreate", async (interaction) => {
         if (!db.escalacoes) db.escalacoes = {};
 
         if (!podeCriarNovaEscalacao(db)) {
-          return interaction.editReply({
-            content: mensagemLimiteEscalacoes(db)
-          });
+          return interaction.editReply({ content: mensagemLimiteEscalacoes(db) });
         }
 
         db.escalacoes[escalacaoId] = {
@@ -1259,17 +1241,10 @@ client.on("interactionCreate", async (interaction) => {
 
         await apagarPaineisEscalacaoAntigos(channel);
 
-        const painelEnviado = await channel.send(buildPayload(painelEscalacaoEmbed(), [painelEscalacaoButton()], true)).catch(error => {
+        await channel.send(buildPayload(painelEscalacaoEmbed(), [painelEscalacaoButton()], true)).catch(error => {
           console.error("Erro ao enviar painel de escalação:", error);
           return null;
         });
-
-        if (!painelEnviado) {
-          return await responderSeguro(interaction, {
-            content: "❌ Não consegui enviar o painel de escalação. Verifique as permissões do bot.",
-            ephemeral: true
-          });
-        }
 
         return await responderSeguro(interaction, {
           content: "✅ Painel de escalação enviado neste canal. Painéis antigos foram removidos.",
@@ -1669,17 +1644,24 @@ client.on("interactionCreate", async (interaction) => {
 
       const vagas = Number(vagasRaw.replace(/\D/g, ""));
 
-      if (!vagas || vagas <= 0) {
+      if (!membroTemPermPuxarAcao(interaction)) {
         return interaction.reply({
-          content: "❌ A quantidade de vagas precisa ser um número válido. Exemplo: 15",
+          content: "❌ Apenas quem possui o cargo **perm puxar ação** pode iniciar uma escalação.",
           ephemeral: true
         });
       }
 
-      const dbLimiteEscalacao = loadDb();
-      if (!podeCriarNovaEscalacao(dbLimiteEscalacao)) {
+      const dbAtual = loadDb();
+      if (!podeCriarNovaEscalacao(dbAtual)) {
         return interaction.reply({
-          content: mensagemLimiteEscalacoes(dbLimiteEscalacao),
+          content: mensagemLimiteEscalacoes(dbAtual),
+          ephemeral: true
+        });
+      }
+
+      if (!vagas || vagas <= 0) {
+        return interaction.reply({
+          content: "❌ A quantidade de vagas precisa ser um número válido. Exemplo: 15",
           ephemeral: true
         });
       }
@@ -1718,18 +1700,13 @@ client.on("interactionCreate", async (interaction) => {
       const vagasReservas = Number(vagasReservasRaw.replace(/\D/g, "")) || 0;
       const valorArrecadadoInicial = interaction.fields.getTextInputValue("valor_arrecadado") || "Não informado";
       const descricao = interaction.fields.getTextInputValue("descricao") || "Não informado";
-      const escalacaoId = `${Date.now()}_${interaction.user.id}`;
+const escalacaoId = `${Date.now()}_${interaction.user.id}`;
       const db = loadDb();
 
       if (!db.escalacoes) db.escalacoes = {};
 
       if (!podeCriarNovaEscalacao(db)) {
-        delete temp[`esc_${interaction.user.id}`];
-        saveTemp(temp);
-
-        return interaction.editReply({
-          content: mensagemLimiteEscalacoes(db)
-        });
+        return interaction.editReply({ content: mensagemLimiteEscalacoes(db) });
       }
 
       db.escalacoes[escalacaoId] = {
