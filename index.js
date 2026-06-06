@@ -1316,28 +1316,11 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (interaction.customId === "iniciar_escalacao") {
-        if (!membroTemPermPuxarAcao(interaction)) {
-          return interaction.reply({
-            content: "❌ Apenas quem possui o cargo **perm puxar ação** pode iniciar uma escalação.",
-            ephemeral: true
-          });
-        }
-
         // IMPORTANTE:
-        // O modal precisa ser a primeira resposta da interação.
-        // Não pode existir verificação de escalação aberta, loadDb(), saveDb(), fetch(), deferReply(), deferUpdate() ou reply() antes do showModal().
-        // Ao clicar fora do modal, o Discord não envia evento de cancelamento para o bot.
-        // Por isso limpamos apenas o rascunho local de forma síncrona, sem bloquear uma nova tentativa.
-        try {
-          const temp = loadTemp();
-          if (temp[`esc_${interaction.user.id}`]) {
-            delete temp[`esc_${interaction.user.id}`];
-            saveTemp(temp);
-          }
-        } catch (error) {
-          console.error("Erro ao limpar rascunho da escalação:", error);
-        }
-
+        // O showModal precisa ser a PRIMEIRA resposta da interação do botão.
+        // Não coloque loadDb(), saveDb(), loadTemp(), saveTemp(), fetch(), deferReply(), deferUpdate(), reply() ou editReply() antes dele.
+        // Se o usuário clicar fora do modal, o Discord não envia nenhum evento para o bot.
+        // Então não devemos criar bloqueio nem validar escalação aberta aqui.
         return interaction.showModal(modalEscalacaoEtapa1());
       }
 
