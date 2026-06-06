@@ -1014,6 +1014,7 @@ const client = new Client({
 
 client.once("clientReady", async () => {
   console.log(`✅ Bot online como ${client.user.tag}`);
+  console.log("✅ Versão carregada: limite 2 escalações + showModal imediato - 2026-06-06");
   console.log("✅ Sistema novo ativo: até 2 escalações abertas simultâneas.");
   console.log("✅ Sistema de escalação ativo: limite novo de 2 escalações abertas simultâneas.");
   if (!CONFIG.logsAprovadosReprovadosChannelId) console.log("⚠️ LOGS_ANALISE_APROVADOS_REPROVADOS não configurado no .env.");
@@ -1066,15 +1067,14 @@ client.once("clientReady", async () => {
 });
 
 client.on("interactionCreate", async (interaction) => {
-  try {
-    // PRIORIDADE MÁXIMA: botão Iniciar Escalação
-    // O Discord exige que showModal() seja a primeira resposta da interação.
-    // Por isso este bloco fica antes de qualquer comando, loadDb, saveDb, fetch, defer ou reply.
-    if (interaction.isButton() && interaction.customId === "iniciar_escalacao") {
-      // Primeiro abre o modal. O limite de 2 é validado apenas ao enviar a etapa final.
-      return await interaction.showModal(modalEscalacaoEtapa1());
-    }
+  // PRIORIDADE MÁXIMA: botão Iniciar Escalação
+  // O showModal precisa ser a PRIMEIRA resposta da interação.
+  // Não coloque await, loadDb, saveDb, fetch, deferReply, deferUpdate, reply ou editReply antes disso.
+  if (interaction.isButton() && interaction.customId === "iniciar_escalacao") {
+    return interaction.showModal(modalEscalacaoEtapa1());
+  }
 
+  try {
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === "painel") {
         await interaction.deferReply({ ephemeral: true }).catch(() => null);
