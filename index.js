@@ -1,5 +1,5 @@
 require("dotenv").config();
-console.log("✅ VERSAO REAL 06/06: limite 2 escalações + modal imediato + thumbnail Medellin");
+console.log("✅ VERSAO 06/06: painel único + limite 2 + modal imediato + thumbnail Medellin");
 console.log("✅ Versão carregada: sistema limite 2 escalações reconstruído + clientReady + thumbnail");
 
 process.on("unhandledRejection", (error) => {
@@ -307,6 +307,27 @@ async function apagarPaineisEscalacaoAntigos(channel) {
     }
   } catch (error) {
     console.error("Erro ao limpar painéis antigos de escalação:", error);
+  }
+}
+
+async function manterApenasPainelEscalacaoAtual(channel, manterMessageId) {
+  try {
+    if (!channel?.messages?.fetch || !manterMessageId) return;
+    const mensagens = await channel.messages.fetch({ limit: 30 }).catch(() => null);
+    if (!mensagens) return;
+
+    const paineis = mensagens.filter(msg => {
+      const ehDoBot = msg.author?.id === client.user?.id;
+      const temTitulo = msg.embeds?.some(embed => String(embed.title || "").toUpperCase().includes("ESCALAÇÃO DE AÇÃO"));
+      const temBotao = msg.components?.some(row => row.components?.some(component => component.customId === "iniciar_escalacao"));
+      return ehDoBot && temTitulo && temBotao && msg.id !== manterMessageId;
+    });
+
+    for (const msg of paineis.values()) {
+      await msg.delete().catch(() => null);
+    }
+  } catch (error) {
+    console.error("Erro ao remover painéis duplicados de escalação:", error);
   }
 }
 
@@ -1250,15 +1271,42 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           });
         }
 
+        const dbPainel = loadDb();
+        const agora = Date.now();
+
+        if (dbPainel.painelEscalacaoLockEm && agora - dbPainel.painelEscalacaoLockEm < 7000) {
+          return await responderSeguro(interaction, {
+            content: "⚠️ O painel de escalação acabou de ser enviado. Aguarde alguns segundos para tentar novamente.",
+            ephemeral: true
+          });
+        }
+
+        dbPainel.painelEscalacaoLockEm = agora;
+        saveDb(dbPainel);
+
         await apagarPaineisEscalacaoAntigos(channel);
 
-        await channel.send(buildPayload(painelEscalacaoEmbed(), [painelEscalacaoButton()], true)).catch(error => {
+        const msgPainel = await channel.send(buildPayload(painelEscalacaoEmbed(), [painelEscalacaoButton()], true)).catch(error => {
           console.error("Erro ao enviar painel de escalação:", error);
           return null;
         });
 
+        if (!msgPainel) {
+          return await responderSeguro(interaction, {
+            content: "❌ Não consegui enviar o painel de escalação.",
+            ephemeral: true
+          });
+        }
+
+        const dbPainelFinal = loadDb();
+        dbPainelFinal.painelEscalacaoMessageId = msgPainel.id;
+        dbPainelFinal.painelEscalacaoLockEm = Date.now();
+        saveDb(dbPainelFinal);
+
+        await manterApenasPainelEscalacaoAtual(channel, msgPainel.id);
+
         return await responderSeguro(interaction, {
-          content: "✅ Painel de escalação enviado neste canal. Painéis antigos foram removidos.",
+          content: "✅ Painel de escalação enviado neste canal. Duplicados foram removidos.",
           ephemeral: true
         });
       }
