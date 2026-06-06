@@ -549,6 +549,12 @@ function getEscalacao(escalacaoId) {
   return { db, escalacao: db.escalacoes[escalacaoId] };
 }
 
+// Mantido por segurança caso algum trecho antigo ainda chame essa função.
+// Retornar null impede o bloqueio global de apenas 1 escalação por vez.
+function getEscalacaoAberta() {
+  return null;
+}
+
 async function enviarLogEscalacaoFinalizada(escalacao, escalacaoId, isWin) {
   try {
     const canalLogs = await client.channels.fetch(CONFIG.logsEscalacaoChannelId).catch(() => null);
@@ -1318,9 +1324,20 @@ client.on("interactionCreate", async (interaction) => {
         }
 
         // IMPORTANTE:
-        // Este botão NÃO pode verificar escalação aberta, banco de dados ou temp antes do modal.
-        // Ao fechar o modal clicando fora, o Discord não envia evento para o bot.
-        // Por isso, não criamos bloqueio temporário aqui.
+        // O modal precisa ser a primeira resposta da interação.
+        // Não pode existir verificação de escalação aberta, loadDb(), saveDb(), fetch(), deferReply(), deferUpdate() ou reply() antes do showModal().
+        // Ao clicar fora do modal, o Discord não envia evento de cancelamento para o bot.
+        // Por isso limpamos apenas o rascunho local de forma síncrona, sem bloquear uma nova tentativa.
+        try {
+          const temp = loadTemp();
+          if (temp[`esc_${interaction.user.id}`]) {
+            delete temp[`esc_${interaction.user.id}`];
+            saveTemp(temp);
+          }
+        } catch (error) {
+          console.error("Erro ao limpar rascunho da escalação:", error);
+        }
+
         return interaction.showModal(modalEscalacaoEtapa1());
       }
 
