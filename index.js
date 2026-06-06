@@ -988,7 +988,7 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message]
 });
 
-client.once("ready", async () => {
+client.once("clientReady", async () => {
   console.log(`✅ Bot online como ${client.user.tag}`);
   if (!CONFIG.logsAprovadosReprovadosChannelId) console.log("⚠️ LOGS_ANALISE_APROVADOS_REPROVADOS não configurado no .env.");
   await registerCommands().catch(console.error);
@@ -1041,6 +1041,13 @@ client.once("ready", async () => {
 
 client.on("interactionCreate", async (interaction) => {
   try {
+    // PRIORIDADE MÁXIMA: botão Iniciar Escalação
+    // O Discord exige que showModal() seja a primeira resposta da interação.
+    // Por isso este bloco fica antes de qualquer comando, loadDb, saveDb, fetch, defer ou reply.
+    if (interaction.isButton() && interaction.customId === "iniciar_escalacao") {
+      return await interaction.showModal(modalEscalacaoEtapa1());
+    }
+
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === "painel") {
         await interaction.deferReply({ ephemeral: true }).catch(() => null);
@@ -1313,15 +1320,6 @@ client.on("interactionCreate", async (interaction) => {
         );
 
         return interaction.showModal(modal);
-      }
-
-      if (interaction.customId === "iniciar_escalacao") {
-        // IMPORTANTE:
-        // O showModal precisa ser a PRIMEIRA resposta da interação do botão.
-        // Não coloque loadDb(), saveDb(), loadTemp(), saveTemp(), fetch(), deferReply(), deferUpdate(), reply() ou editReply() antes dele.
-        // Se o usuário clicar fora do modal, o Discord não envia nenhum evento para o bot.
-        // Então não devemos criar bloqueio nem validar escalação aberta aqui.
-        return interaction.showModal(modalEscalacaoEtapa1());
       }
 
       if (interaction.customId === "iniciar_escalacao_etapa_2") {
