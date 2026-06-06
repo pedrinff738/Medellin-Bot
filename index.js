@@ -1322,7 +1322,23 @@ client.on("interactionCreate", async (interaction) => {
         // o showModal precisa ser a primeira resposta da interação.
         // Não coloque await, loadDb(), saveDb(), fetch(), deferReply(),
         // deferUpdate(), reply() ou editReply() antes dele.
-        return interaction.showModal(modalEscalacaoEtapa1());
+        const modal = modalEscalacaoEtapa1();
+
+        interaction.showModal(modal)
+          .then(() => {
+            // Limpa qualquer rascunho antigo caso o usuário tenha fechado o modal clicando fora.
+            // Isso evita bloquear a próxima tentativa de criar escalação.
+            const temp = loadTemp();
+            if (temp[`esc_${interaction.user.id}`]) {
+              delete temp[`esc_${interaction.user.id}`];
+              saveTemp(temp);
+            }
+          })
+          .catch(error => {
+            console.error("Erro ao abrir modal de escalação:", error);
+          });
+
+        return;
       }
 
       if (interaction.customId === "iniciar_escalacao_etapa_2") {
