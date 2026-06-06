@@ -1,6 +1,5 @@
 require("dotenv").config();
-console.log("✅ VERSAO 06/06: painel único + limite 2 + modal imediato + thumbnail Medellin");
-console.log("✅ Versão carregada: sistema limite 2 escalações reconstruído + clientReady + thumbnail");
+console.log("✅ VERSAO FINAL: painel único real + limite 2 + modal imediato + thumbnail Medellin");
 
 process.on("unhandledRejection", (error) => {
   console.error("Unhandled Rejection:", error);
@@ -1058,6 +1057,8 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message]
 });
 
+let painelEscalacaoEmEnvio = false;
+
 client.once("clientReady", async () => {
   console.log(`✅ Bot online como ${client.user.tag}`);
   if (!CONFIG.logsAprovadosReprovadosChannelId) console.log("⚠️ LOGS_ANALISE_APROVADOS_REPROVADOS não configurado no .env.");
@@ -1110,18 +1111,10 @@ client.once("clientReady", async () => {
 });
 
 client.on("interactionCreate", async (interaction) => {
-  // PRIORIDADE MÁXIMA: botão de escalação tratado antes de qualquer await.
-  // Regra nova: permite até 2 escalações com status "Aberta". Bloqueia somente a 3ª.
+  // PRIORIDADE MÁXIMA: botão de escalação tratado antes de qualquer await pesado.
+  // Abre o modal imediatamente para evitar DiscordAPIError[10062]: Unknown interaction.
+  // O limite de 2 escalações abertas é validado somente no envio do modal.
   if (interaction.isButton() && interaction.customId === "iniciar_escalacao") {
-    const dbAtual = loadDb();
-
-    if (!podeCriarNovaEscalacao(dbAtual)) {
-      return interaction.reply({
-        content: mensagemLimiteEscalacoes(dbAtual),
-        ephemeral: true
-      });
-    }
-
     return interaction.showModal(modalEscalacaoEtapa1());
   }
 
@@ -1253,62 +1246,90 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
       }
 
       if (interaction.commandName === "painel_escalacao") {
-        await interaction.deferReply({ ephemeral: true }).catch(() => null);
-
-        if (!membroTemPermPuxarAcao(interaction)) {
-          return await responderSeguro(interaction, {
-            content: "❌ Apenas quem possui o cargo **perm puxar ação** pode enviar o painel de escalação.",
+        if (painelEscalacaoEmEnvio) {
+          return interaction.reply({
+            content: "⚠️ O painel de escalação já está sendo enviado. Aguarde alguns segundos.",
             ephemeral: true
-          });
+          }).catch(() => null);
         }
 
-        const channel = interaction.channel;
+        painelEscalacaoEmEnvio = true;
 
-        if (!channel) {
+        try {
+          await interaction.deferReply({ ephemeral: true }).catch(() => null);
+
+          if (!membroTemPermPuxarAcao(interaction)) {
+            return await responderSeguro(interaction, {
+              content: "❌ Apenas quem possui o cargo **perm puxar ação** pode enviar o painel de escalação.",
+              ephemeral: true
+            });
+          }
+
+          const channel = interaction.channel;
+
+          if (!channel) {
+            return await responderSeguro(interaction, {
+              content: "❌ Não consegui identificar o canal atual.",
+              ephemeral: true
+            });
+          }
+
+          const payloadPainel = buildPayload(painelEscalacaoEmbed(), [painelEscalacaoButton()], true);
+          const dbPainel = loadDb();
+          let msgPainel = null;
+
+          // Reutiliza o painel salvo, se existir. Assim o comando não cria 2 painéis.
+          if (dbPainel.painelEscalacaoMessageId) {
+            msgPainel = await channel.messages.fetch(dbPainel.painelEscalacaoMessageId).catch(() => null);
+            if (msgPainel) {
+              await msgPainel.edit(payloadPainel).catch(() => { msgPainel = null; });
+            }
+          }
+
+          // Se não achou pelo ID salvo, procura um painel antigo recente e edita ele.
+          if (!msgPainel) {
+            const mensagens = await channel.messages.fetch({ limit: 30 }).catch(() => null);
+            const painelExistente = mensagens?.find(msg => {
+              const ehDoBot = msg.author?.id === client.user?.id;
+              const temTitulo = msg.embeds?.some(embed => String(embed.title || "").toUpperCase().includes("ESCALAÇÃO DE AÇÃO"));
+              const temBotao = msg.components?.some(row => row.components?.some(component => component.customId === "iniciar_escalacao"));
+              return ehDoBot && temTitulo && temBotao;
+            });
+
+            if (painelExistente) {
+              msgPainel = painelExistente;
+              await msgPainel.edit(payloadPainel).catch(() => { msgPainel = null; });
+            }
+          }
+
+          // Só envia um painel novo se realmente não existir nenhum para reutilizar.
+          if (!msgPainel) {
+            msgPainel = await channel.send(payloadPainel).catch(error => {
+              console.error("Erro ao enviar painel de escalação:", error);
+              return null;
+            });
+          }
+
+          if (!msgPainel) {
+            return await responderSeguro(interaction, {
+              content: "❌ Não consegui enviar o painel de escalação.",
+              ephemeral: true
+            });
+          }
+
+          const dbPainelFinal = loadDb();
+          dbPainelFinal.painelEscalacaoMessageId = msgPainel.id;
+          saveDb(dbPainelFinal);
+
+          await manterApenasPainelEscalacaoAtual(channel, msgPainel.id);
+
           return await responderSeguro(interaction, {
-            content: "❌ Não consegui identificar o canal atual.",
+            content: "✅ Painel de escalação atualizado neste canal. Mantive apenas 1 painel ativo.",
             ephemeral: true
           });
+        } finally {
+          setTimeout(() => { painelEscalacaoEmEnvio = false; }, 5000);
         }
-
-        const dbPainel = loadDb();
-        const agora = Date.now();
-
-        if (dbPainel.painelEscalacaoLockEm && agora - dbPainel.painelEscalacaoLockEm < 7000) {
-          return await responderSeguro(interaction, {
-            content: "⚠️ O painel de escalação acabou de ser enviado. Aguarde alguns segundos para tentar novamente.",
-            ephemeral: true
-          });
-        }
-
-        dbPainel.painelEscalacaoLockEm = agora;
-        saveDb(dbPainel);
-
-        await apagarPaineisEscalacaoAntigos(channel);
-
-        const msgPainel = await channel.send(buildPayload(painelEscalacaoEmbed(), [painelEscalacaoButton()], true)).catch(error => {
-          console.error("Erro ao enviar painel de escalação:", error);
-          return null;
-        });
-
-        if (!msgPainel) {
-          return await responderSeguro(interaction, {
-            content: "❌ Não consegui enviar o painel de escalação.",
-            ephemeral: true
-          });
-        }
-
-        const dbPainelFinal = loadDb();
-        dbPainelFinal.painelEscalacaoMessageId = msgPainel.id;
-        dbPainelFinal.painelEscalacaoLockEm = Date.now();
-        saveDb(dbPainelFinal);
-
-        await manterApenasPainelEscalacaoAtual(channel, msgPainel.id);
-
-        return await responderSeguro(interaction, {
-          content: "✅ Painel de escalação enviado neste canal. Duplicados foram removidos.",
-          ephemeral: true
-        });
       }
 
       if (interaction.commandName === "painel_ranking") {
