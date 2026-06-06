@@ -552,10 +552,14 @@ function getEscalacao(escalacaoId) {
 const LIMITE_ESCALACOES_ABERTAS = 2;
 
 function getEscalacoesAbertas(db = loadDb()) {
-  if (!db.escalacoes) db.escalacoes = {};
+  if (!db.escalacoes || typeof db.escalacoes !== "object") db.escalacoes = {};
 
   return Object.values(db.escalacoes).filter(escalacao => {
-    return escalacao && escalacao.status === "Aberta";
+    if (!escalacao) return false;
+
+    // Sistema reconstruído: somente status exatamente "Aberta" conta como vaga ocupada.
+    // "Finalizada", "Cancelada", "Win", "Red" ou qualquer outro status libera vaga.
+    return String(escalacao.status || "").toLowerCase() === "aberta";
   });
 }
 
@@ -569,11 +573,11 @@ function podeCriarNovaEscalacao(db = loadDb()) {
 
 function mensagemLimiteEscalacoes(db = loadDb()) {
   const abertas = quantidadeEscalacoesAbertas(db);
-  return `⚠️ Limite de escalações abertas atingido: **${abertas}/${LIMITE_ESCALACOES_ABERTAS}**. Finalize ou cancele uma escalação para liberar vaga.`;
+  return `⚠️ Já existem **${abertas}/${LIMITE_ESCALACOES_ABERTAS}** escalações abertas no momento. Finalize ou cancele uma escalação para liberar vaga.`;
 }
 
-// Sistema novo: não existe mais bloqueio de 1 escalação.
-// Esta função só retorna algo quando já tiver 2 escalações abertas.
+// Compatibilidade: se algum trecho antigo chamar essa função, ela agora segue o sistema novo.
+// Ela só retorna algo quando o limite de 2 abertas for atingido.
 function getEscalacaoAberta(db = loadDb()) {
   const abertas = getEscalacoesAbertas(db);
   return abertas.length >= LIMITE_ESCALACOES_ABERTAS ? abertas[0] : null;
@@ -1014,7 +1018,7 @@ const client = new Client({
 
 client.once("clientReady", async () => {
   console.log(`✅ Bot online como ${client.user.tag}`);
-  console.log("✅ Versão carregada: limite 2 escalações + showModal imediato - 2026-06-06");
+  console.log("✅ Versão carregada: bloqueio reconstruído: máximo 2 escalações abertas - 2026-06-06");
   console.log("✅ Sistema novo ativo: até 2 escalações abertas simultâneas.");
   console.log("✅ Sistema de escalação ativo: limite novo de 2 escalações abertas simultâneas.");
   if (!CONFIG.logsAprovadosReprovadosChannelId) console.log("⚠️ LOGS_ANALISE_APROVADOS_REPROVADOS não configurado no .env.");
@@ -1628,6 +1632,14 @@ client.on("interactionCreate", async (interaction) => {
       if (!vagas || vagas <= 0) {
         return interaction.reply({
           content: "❌ A quantidade de vagas precisa ser um número válido. Exemplo: 15",
+          ephemeral: true
+        });
+      }
+
+      const dbLimiteEscalacao = loadDb();
+      if (!podeCriarNovaEscalacao(dbLimiteEscalacao)) {
+        return interaction.reply({
+          content: mensagemLimiteEscalacoes(dbLimiteEscalacao),
           ephemeral: true
         });
       }
