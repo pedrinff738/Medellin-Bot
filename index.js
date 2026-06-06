@@ -551,8 +551,27 @@ function getEscalacao(escalacaoId) {
 
 // Mantido por segurança caso algum trecho antigo ainda chame essa função.
 // Retornar null impede o bloqueio global de apenas 1 escalação por vez.
+function getEscalacoesAbertas(db = loadDb()) {
+  if (!db.escalacoes) db.escalacoes = {};
+
+  return Object.values(db.escalacoes).filter(escalacao => {
+    return escalacao && escalacao.status === "Aberta";
+  });
+}
+
+function podeCriarNovaEscalacao(db = loadDb()) {
+  return getEscalacoesAbertas(db).length < 2;
+}
+
+function mensagemLimiteEscalacoes(db = loadDb()) {
+  const abertas = getEscalacoesAbertas(db).length;
+  return `⚠️ Limite de escalações abertas atingido: **${abertas}/2**. Finalize ou cancele uma escalação para abrir outra.`;
+}
+
+// Mantido por segurança caso algum trecho antigo ainda chame essa função.
 function getEscalacaoAberta() {
-  return null;
+  const abertas = getEscalacoesAbertas();
+  return abertas.length >= 2 ? abertas[0] : null;
 }
 
 async function enviarLogEscalacaoFinalizada(escalacao, escalacaoId, isWin) {
@@ -1128,6 +1147,12 @@ client.on("interactionCreate", async (interaction) => {
 
         if (!db.escalacoes) db.escalacoes = {};
 
+        if (!podeCriarNovaEscalacao(db)) {
+          return interaction.editReply({
+            content: mensagemLimiteEscalacoes(db)
+          });
+        }
+
         db.escalacoes[escalacaoId] = {
           id: escalacaoId,
           acao,
@@ -1637,6 +1662,12 @@ const escalacaoId = `${Date.now()}_${interaction.user.id}`;
       const db = loadDb();
 
       if (!db.escalacoes) db.escalacoes = {};
+
+      if (!podeCriarNovaEscalacao(db)) {
+        return interaction.editReply({
+          content: mensagemLimiteEscalacoes(db)
+        });
+      }
 
       db.escalacoes[escalacaoId] = {
         id: escalacaoId,
