@@ -1103,8 +1103,7 @@ client.on("interactionCreate", async (interaction) => {
         const data = interaction.options.getString("data");
         const horario = interaction.options.getString("horario");
         const vagas = interaction.options.getInteger("vagas");
-const escalaAberta = getEscalacaoAberta();
-const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado") || "Não informado";
+        const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado") || "Não informado";
         const descricao = interaction.options.getString("descricao") || "Não informado";
 
         if (!vagas || vagas <= 0) {
