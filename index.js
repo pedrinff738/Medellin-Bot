@@ -31,6 +31,7 @@ const {
 const fs = require("fs");
 const path = require("path");
 
+const VERSAO_BOT = "2026-06-06-final-painel-unico-limite-2-showmodal-imediato";
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
@@ -271,6 +272,8 @@ function painelEscalacaoEmbed() {
   if (fs.existsSync(CONFIG.imagemLocal)) {
     embed.setThumbnail("attachment://medellin-thumbnail.png");
     embed.setImage("attachment://medellin-thumbnail.png");
+  } else if (client?.user) {
+    embed.setThumbnail(client.user.displayAvatarURL({ extension: "png", size: 256 }));
   }
 
   return embed;
@@ -284,6 +287,33 @@ function painelEscalacaoButton() {
       .setEmoji("🎯")
       .setStyle(ButtonStyle.Primary)
   );
+}
+
+async function apagarPaineisEscalacaoAntigos(channel) {
+  try {
+    if (!channel?.messages?.fetch) return;
+
+    const mensagens = await channel.messages.fetch({ limit: 20 }).catch(() => null);
+    if (!mensagens) return;
+
+    const paineis = mensagens.filter(msg => {
+      const ehDoBot = msg.author?.id === client.user?.id;
+      const temTitulo = msg.embeds?.some(embed =>
+        String(embed.title || "").toUpperCase().includes("ESCALAÇÃO DE AÇÃO")
+      );
+      const temBotao = msg.components?.some(row =>
+        row.components?.some(component => component.customId === "iniciar_escalacao")
+      );
+
+      return ehDoBot && temTitulo && temBotao;
+    });
+
+    for (const msg of paineis.values()) {
+      await msg.delete().catch(() => null);
+    }
+  } catch (error) {
+    console.error("Erro ao limpar painéis antigos de escalação:", error);
+  }
 }
 
 function proximoEscalacaoButton() {
@@ -1018,6 +1048,7 @@ const client = new Client({
 
 client.once("clientReady", async () => {
   console.log(`✅ Bot online como ${client.user.tag}`);
+  console.log(`✅ Versão carregada: ${VERSAO_BOT}`);
   console.log("✅ Versão carregada: bloqueio reconstruído: máximo 2 escalações abertas - 2026-06-06");
   console.log("✅ Sistema novo ativo: até 2 escalações abertas simultâneas.");
   console.log("✅ Sistema de escalação ativo: limite novo de 2 escalações abertas simultâneas.");
@@ -1226,13 +1257,22 @@ client.on("interactionCreate", async (interaction) => {
           });
         }
 
-        await channel.send(buildPayload(painelEscalacaoEmbed(), [painelEscalacaoButton()], true)).catch(error => {
+        await apagarPaineisEscalacaoAntigos(channel);
+
+        const painelEnviado = await channel.send(buildPayload(painelEscalacaoEmbed(), [painelEscalacaoButton()], true)).catch(error => {
           console.error("Erro ao enviar painel de escalação:", error);
           return null;
         });
 
+        if (!painelEnviado) {
+          return await responderSeguro(interaction, {
+            content: "❌ Não consegui enviar o painel de escalação. Verifique as permissões do bot.",
+            ephemeral: true
+          });
+        }
+
         return await responderSeguro(interaction, {
-          content: "✅ Painel de escalação enviado neste canal.",
+          content: "✅ Painel de escalação enviado neste canal. Painéis antigos foram removidos.",
           ephemeral: true
         });
       }
