@@ -1,4 +1,5 @@
 require("dotenv").config();
+console.log("✅ VERSAO REAL 06/06: limite 2 escalações + modal imediato + thumbnail Medellin");
 console.log("✅ Versão carregada: sistema limite 2 escalações reconstruído + clientReady + thumbnail");
 
 process.on("unhandledRejection", (error) => {
@@ -1088,8 +1089,18 @@ client.once("clientReady", async () => {
 });
 
 client.on("interactionCreate", async (interaction) => {
-  // PRIORIDADE MÁXIMA: abrir modal sem await antes, evitando Unknown interaction (10062).
+  // PRIORIDADE MÁXIMA: botão de escalação tratado antes de qualquer await.
+  // Regra nova: permite até 2 escalações com status "Aberta". Bloqueia somente a 3ª.
   if (interaction.isButton() && interaction.customId === "iniciar_escalacao") {
+    const dbAtual = loadDb();
+
+    if (!podeCriarNovaEscalacao(dbAtual)) {
+      return interaction.reply({
+        content: mensagemLimiteEscalacoes(dbAtual),
+        ephemeral: true
+      });
+    }
+
     return interaction.showModal(modalEscalacaoEtapa1());
   }
 
