@@ -549,8 +549,8 @@ function getEscalacao(escalacaoId) {
   return { db, escalacao: db.escalacoes[escalacaoId] };
 }
 
-// Mantido por segurança caso algum trecho antigo ainda chame essa função.
-// Retornar null impede o bloqueio global de apenas 1 escalação por vez.
+const LIMITE_ESCALACOES_ABERTAS = 2;
+
 function getEscalacoesAbertas(db = loadDb()) {
   if (!db.escalacoes) db.escalacoes = {};
 
@@ -559,19 +559,23 @@ function getEscalacoesAbertas(db = loadDb()) {
   });
 }
 
+function quantidadeEscalacoesAbertas(db = loadDb()) {
+  return getEscalacoesAbertas(db).length;
+}
+
 function podeCriarNovaEscalacao(db = loadDb()) {
-  return getEscalacoesAbertas(db).length < 2;
+  return quantidadeEscalacoesAbertas(db) < LIMITE_ESCALACOES_ABERTAS;
 }
 
 function mensagemLimiteEscalacoes(db = loadDb()) {
-  const abertas = getEscalacoesAbertas(db).length;
-  return `⚠️ Limite de escalações abertas atingido: **${abertas}/2**. Finalize ou cancele uma escalação para abrir outra.`;
+  const abertas = quantidadeEscalacoesAbertas(db);
+  return `⚠️ Limite de escalações abertas atingido: **${abertas}/${LIMITE_ESCALACOES_ABERTAS}**. Finalize ou cancele uma escalação para liberar vaga.`;
 }
 
-// Mantido por segurança caso algum trecho antigo ainda chame essa função.
-function getEscalacaoAberta() {
-  const abertas = getEscalacoesAbertas();
-  return abertas.length >= 2 ? abertas[0] : null;
+// Compatibilidade: se algum trecho antigo chamar esta função, ela só bloqueia quando bater o limite novo.
+function getEscalacaoAberta(db = loadDb()) {
+  const abertas = getEscalacoesAbertas(db);
+  return abertas.length >= LIMITE_ESCALACOES_ABERTAS ? abertas[0] : null;
 }
 
 async function enviarLogEscalacaoFinalizada(escalacao, escalacaoId, isWin) {
@@ -1009,6 +1013,7 @@ const client = new Client({
 
 client.once("clientReady", async () => {
   console.log(`✅ Bot online como ${client.user.tag}`);
+  console.log("✅ Sistema de escalação ativo: limite novo de 2 escalações abertas simultâneas.");
   if (!CONFIG.logsAprovadosReprovadosChannelId) console.log("⚠️ LOGS_ANALISE_APROVADOS_REPROVADOS não configurado no .env.");
   await registerCommands().catch(console.error);
   await verificarCategoriaLogs().catch(console.error);
@@ -1658,12 +1663,15 @@ client.on("interactionCreate", async (interaction) => {
       const vagasReservas = Number(vagasReservasRaw.replace(/\D/g, "")) || 0;
       const valorArrecadadoInicial = interaction.fields.getTextInputValue("valor_arrecadado") || "Não informado";
       const descricao = interaction.fields.getTextInputValue("descricao") || "Não informado";
-const escalacaoId = `${Date.now()}_${interaction.user.id}`;
+      const escalacaoId = `${Date.now()}_${interaction.user.id}`;
       const db = loadDb();
 
       if (!db.escalacoes) db.escalacoes = {};
 
       if (!podeCriarNovaEscalacao(db)) {
+        delete temp[`esc_${interaction.user.id}`];
+        saveTemp(temp);
+
         return interaction.editReply({
           content: mensagemLimiteEscalacoes(db)
         });
