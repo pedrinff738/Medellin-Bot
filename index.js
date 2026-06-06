@@ -572,7 +572,8 @@ function mensagemLimiteEscalacoes(db = loadDb()) {
   return `⚠️ Limite de escalações abertas atingido: **${abertas}/${LIMITE_ESCALACOES_ABERTAS}**. Finalize ou cancele uma escalação para liberar vaga.`;
 }
 
-// Compatibilidade: se algum trecho antigo chamar esta função, ela só bloqueia quando bater o limite novo.
+// Sistema novo: não existe mais bloqueio de 1 escalação.
+// Esta função só retorna algo quando já tiver 2 escalações abertas.
 function getEscalacaoAberta(db = loadDb()) {
   const abertas = getEscalacoesAbertas(db);
   return abertas.length >= LIMITE_ESCALACOES_ABERTAS ? abertas[0] : null;
@@ -1013,6 +1014,7 @@ const client = new Client({
 
 client.once("clientReady", async () => {
   console.log(`✅ Bot online como ${client.user.tag}`);
+  console.log("✅ Sistema novo ativo: até 2 escalações abertas simultâneas.");
   console.log("✅ Sistema de escalação ativo: limite novo de 2 escalações abertas simultâneas.");
   if (!CONFIG.logsAprovadosReprovadosChannelId) console.log("⚠️ LOGS_ANALISE_APROVADOS_REPROVADOS não configurado no .env.");
   await registerCommands().catch(console.error);
@@ -1069,6 +1071,7 @@ client.on("interactionCreate", async (interaction) => {
     // O Discord exige que showModal() seja a primeira resposta da interação.
     // Por isso este bloco fica antes de qualquer comando, loadDb, saveDb, fetch, defer ou reply.
     if (interaction.isButton() && interaction.customId === "iniciar_escalacao") {
+      // Primeiro abre o modal. O limite de 2 é validado apenas ao enviar a etapa final.
       return await interaction.showModal(modalEscalacaoEtapa1());
     }
 
