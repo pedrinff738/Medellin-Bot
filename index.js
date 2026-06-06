@@ -1318,15 +1318,12 @@ const valorArrecadadoInicial = interaction.options.getString("valor_arrecadado")
           });
         }
 
-        const temp = loadTemp();
-        if (temp[`esc_${interaction.user.id}`]) {
-          delete temp[`esc_${interaction.user.id}`];
-          saveTemp(temp);
-        }
-
-        return interaction.showModal(modalEscalacaoEtapa1()).catch(error => {
-          console.error("Erro ao abrir modal de escalação:", error);
-        });
+        // IMPORTANTE:
+        // Para evitar DiscordAPIError[10062]: Unknown interaction,
+        // o showModal precisa ser a primeira resposta da interação.
+        // Não coloque await, loadDb(), saveDb(), fetch(), deferReply(),
+        // deferUpdate(), reply() ou editReply() antes dele.
+        return interaction.showModal(modalEscalacaoEtapa1());
       }
 
       if (interaction.customId === "iniciar_escalacao_etapa_2") {
